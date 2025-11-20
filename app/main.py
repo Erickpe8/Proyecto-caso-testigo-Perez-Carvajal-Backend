@@ -35,12 +35,20 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# ============= CORS CONFIGURACIÓN MEJORADA =============
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
+    allow_origins=[
+        "https://proyecto-caso-testigo-perez-carvaja.vercel.app",
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "*"
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
-    allow_credentials=True
+    expose_headers=["*"]
 )
 
 # ============= ENUMS Y CONSTANTES =============
@@ -241,7 +249,9 @@ class SessionManager:
                 key="session_id",
                 value=session_id,
                 httponly=True,
-                max_age=86400 * 30  # 30 días
+                samesite="none",
+                secure=True,
+                max_age=86400 * 30
             )
         return session_id
 
@@ -256,26 +266,10 @@ def get_session_id(request: Request, response: Response) -> str:
     return SessionManager.get_or_create_session(request, response)
 
 # ============= ENDPOINTS =============
-from contextlib import asynccontextmanager
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    logger.info("🚀 API iniciada correctamente")
-    yield
-    # Shutdown (si necesario)
-    pass
-
-app = FastAPI(
-    title="Task Management API",
-    description="API RESTful con principios SOLID y patrones de diseño",
-    version="2.0.0",
-    lifespan=lifespan
-)
 
 @app.get("/health")
 def health_check(request: Request, response: Response):
-    """Health check endpoint - genera cookie de sesión automáticamente"""
+    """Health check endpoint"""
     get_session_id(request, response)
     return {
         "status": "healthy",
@@ -283,28 +277,13 @@ def health_check(request: Request, response: Response):
         "version": "2.0.0"
     }
 
-# Handler para OPTIONS requests (CORS preflight)
-@app.options("/{rest_of_path:path}")
-async def options_handler(rest_of_path: str):
-    """Maneja requests OPTIONS para CORS"""
-    return JSONResponse(
-        status_code=200,
-        content={},
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Allow-Credentials": "true",
-        }
-    )
-
 @app.get("/tasks", response_model=List[Task])
 def list_tasks(
     status: Optional[str] = None,
     session_id: str = Depends(get_session_id),
     service: TaskService = Depends(get_task_service)
 ):
-    """Lista todas las tareas, opcionalmente filtradas por estado"""
+    """Lista todas las tareas"""
     return service.get_all_tasks(session_id, status)
 
 @app.get("/tasks/search", response_model=List[Task])
@@ -313,7 +292,7 @@ def search_tasks(
     session_id: str = Depends(get_session_id),
     service: TaskService = Depends(get_task_service)
 ):
-    """Busca tareas por título o descripción"""
+    """Busca tareas"""
     if len(q) < 2:
         raise HTTPException(status_code=400, detail="Query must be at least 2 characters")
     return service.search_tasks(session_id, q)
@@ -323,7 +302,7 @@ def get_stats(
     session_id: str = Depends(get_session_id),
     service: TaskService = Depends(get_task_service)
 ):
-    """Obtiene estadísticas de las tareas"""
+    """Obtiene estadísticas"""
     return service.get_statistics(session_id)
 
 @app.get("/tasks/{task_id}", response_model=Task)
@@ -332,7 +311,7 @@ def get_task(
     session_id: str = Depends(get_session_id),
     service: TaskService = Depends(get_task_service)
 ):
-    """Obtiene una tarea específica por ID"""
+    """Obtiene una tarea"""
     return service.get_task_by_id(session_id, task_id)
 
 @app.post("/tasks", response_model=Task, status_code=201)
@@ -341,7 +320,7 @@ def create_task(
     session_id: str = Depends(get_session_id),
     service: TaskService = Depends(get_task_service)
 ):
-    """Crea una nueva tarea"""
+    """Crea una tarea"""
     return service.create_task(session_id, task)
 
 @app.put("/tasks/{task_id}", response_model=Task)
@@ -351,7 +330,7 @@ def update_task(
     session_id: str = Depends(get_session_id),
     service: TaskService = Depends(get_task_service)
 ):
-    """Actualiza una tarea existente"""
+    """Actualiza una tarea"""
     return service.update_task(session_id, task_id, task)
 
 @app.patch("/tasks/{task_id}/status", response_model=Task)
@@ -361,7 +340,7 @@ def update_task_status(
     session_id: str = Depends(get_session_id),
     service: TaskService = Depends(get_task_service)
 ):
-    """Actualiza solo el estado de una tarea"""
+    """Actualiza estado"""
     return service.update_task(session_id, task_id, TaskUpdate(status=status))
 
 @app.delete("/tasks/{task_id}", status_code=204)
@@ -378,7 +357,7 @@ def delete_task(
 def delete_all_tasks(
     session_id: str = Depends(get_session_id)
 ):
-    """Elimina todas las tareas de la sesión"""
+    """Elimina todas las tareas"""
     with SESSION_LOCK:
         if session_id in repository._storage:
             repository._storage[session_id] = []
@@ -388,7 +367,7 @@ def delete_all_tasks(
 # ============= ERROR HANDLERS =============
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
-    """Maneja excepciones HTTP y retorna JSONResponse válido"""
+    """Maneja excepciones HTTP"""
     return JSONResponse(
         status_code=exc.status_code,
         content={
