@@ -39,7 +39,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://proyecto-caso-testigo-perez-carvaja.vercel.app",
+        "https://proyecto-caso-testigo-perez-carvajal.vercel.app",
         "http://localhost:3000",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
